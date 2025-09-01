@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "255468736418",
+    "project_id": "intern-link-a1e1c",
+    "storage_bucket": "intern-link-a1e1c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:255468736418:android:7f99a16fd5a20c46e22cfb",
+        "android_client_info": {
+          "package_name": "com.example.internlinkapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "255468736418-h20qei6ebhkbjo91bl0m5b7mp76tliiq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBNVH6ViCPJ37ZfxJDCM5VGSfZFYbo4FGI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "255468736418-h20qei6ebhkbjo91bl0m5b7mp76tliiq.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
