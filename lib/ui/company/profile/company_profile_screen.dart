@@ -1,12 +1,15 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/utils/validators.dart';
+import '../../../models/company_model.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/company_provider.dart';
 import '../../../providers/theme_provider.dart';
-import '../../../services/storage_service.dart';
 import '../../shared/widgets/loading_overlay.dart';
 
 class CompanyProfileScreen extends StatefulWidget {
@@ -61,19 +64,29 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
     }
   }
 
+  ImageProvider? _companyImageProvider(CompanyModel company) {
+    if (company.logoBase64 != null && company.logoBase64!.isNotEmpty) {
+      try {
+        final bytes = Uint8List.fromList(base64Decode(company.logoBase64!));
+        return MemoryImage(bytes);
+      } catch (_) {}
+    }
+    if (company.logoUrl != null && company.logoUrl!.isNotEmpty) {
+      return NetworkImage(company.logoUrl!);
+    }
+    return null;
+  }
+
   Future<void> _updateLogo() async {
     try {
-      final imageFile = await StorageService.pickImage();
-      if (imageFile != null) {
-        await context.read<CompanyProvider>().updateCompanyLogo(imageFile);
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Logo updated successfully!'),
-            backgroundColor: Theme.of(context).colorScheme.primary,
-          ),
-        );
-      }
+      await context.read<CompanyProvider>().updateCompanyLogoFromGallery();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Logo updated successfully!'),
+          backgroundColor: Theme.of(context).colorScheme.primary,
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -92,38 +105,25 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
     if (company == null) return;
 
     String? li = _linkedinController.text.trim();
-    if (li.isEmpty) li = null; // store null, not empty
+    if (li.isEmpty) li = null;
 
-    try {
-      final updatedCompany = company.copyWith(
-        name: _nameController.text.trim(),
-        description: _descriptionController.text.trim(),
-        linkedinUrl: li,
-        naitaRecognized: _naitaRecognized,
-      );
+    final updatedCompany = company.copyWith(
+      name: _nameController.text.trim(),
+      description: _descriptionController.text.trim(),
+      linkedinUrl: li,
+      naitaRecognized: _naitaRecognized,
+    );
 
-      await companyProvider.updateCompany(updatedCompany);
+    await companyProvider.updateCompany(updatedCompany);
 
-      setState(() {
-        _isEditing = false;
-      });
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Profile updated successfully!'),
-          backgroundColor: Theme.of(context).colorScheme.primary,
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to update profile: $e'),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
-    }
+    if (!mounted) return;
+    setState(() => _isEditing = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Profile updated successfully!'),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+      ),
+    );
   }
 
   void _cancelEdit() {
@@ -162,32 +162,6 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
     }
   }
 
-  Future<void> _signOut() async {
-    final shouldSignOut = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Sign Out'),
-        content: const Text('Are you sure you want to sign out?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Sign Out'),
-          ),
-        ],
-      ),
-    );
-
-    if (shouldSignOut == true) {
-      // AuthProvider handles sign out
-      // ignore: use_build_context_synchronously
-      await context.read<AuthProvider>().signOut();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -205,7 +179,7 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
             IconButton(
               tooltip: 'Sign Out',
               icon: const Icon(Icons.logout),
-              onPressed: _signOut,
+              onPressed: () async => context.read<AuthProvider>().signOut(),
             ),
           ],
         ],
@@ -252,31 +226,23 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
                                         .withOpacity(0.1),
                                     borderRadius: BorderRadius.circular(16),
                                   ),
-                                  child: company.logoUrl != null
-                                      ? ClipRRect(
-                                          borderRadius:
-                                              BorderRadius.circular(16),
-                                          child: Image.network(
-                                            company.logoUrl!,
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: _companyImageProvider(company) !=
+                                            null
+                                        ? Image(
+                                            image:
+                                                _companyImageProvider(company)!,
                                             fit: BoxFit.cover,
-                                            errorBuilder:
-                                                (context, error, stackTrace) =>
-                                                    Icon(
-                                              Icons.business,
-                                              size: 60,
-                                              color: Theme.of(context)
-                                                  .colorScheme
-                                                  .primary,
-                                            ),
+                                          )
+                                        : Icon(
+                                            Icons.business,
+                                            size: 60,
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .primary,
                                           ),
-                                        )
-                                      : Icon(
-                                          Icons.business,
-                                          size: 60,
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .primary,
-                                        ),
+                                  ),
                                 ),
                                 if (_isEditing)
                                   Positioned(
@@ -426,7 +392,8 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
                             leading: const Icon(Icons.logout),
                             title: const Text('Sign Out'),
                             subtitle: const Text('Sign out of your account'),
-                            onTap: _signOut,
+                            onTap: () async =>
+                                context.read<AuthProvider>().signOut(),
                           ),
                         ],
                       ),

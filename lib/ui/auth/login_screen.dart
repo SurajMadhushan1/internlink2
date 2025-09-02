@@ -49,36 +49,10 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     final authProvider = context.read<AuthProvider>();
-    // If already signed in, just navigate
-    if (authProvider.isAuthenticated) {
-      await authProvider.ensureProfileLoaded();
-      final role = authProvider.user?.role ?? widget.role;
-      if (role != widget.role) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Please use the $role login to sign in.')),
-          );
-        }
-        context.go('/login?role=$role');
-        return;
-      }
-      switch (role) {
-        case AppConstants.roleCompany:
-          context.go('/company');
-          break;
-        case AppConstants.roleAdmin:
-          context.go('/admin');
-          break;
-        case AppConstants.roleUser:
-        default:
-          context.go('/user');
-      }
-      return;
-    }
+
     await authProvider.signInWithEmailPassword(
       _emailController.text.trim(),
       _passwordController.text,
-      roleForCreation: widget.role,
     );
 
     if (authProvider.error != null && mounted) {
@@ -88,60 +62,27 @@ class _LoginScreenState extends State<LoginScreen> {
           backgroundColor: Theme.of(context).colorScheme.error,
         ),
       );
-    } else if (mounted) {
-      await authProvider.ensureProfileLoaded();
-      final role = authProvider.user?.role ?? widget.role;
-      // Enforce that user signs in via the correct role-specific login
-      if (role != widget.role) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Please use the $role login to sign in.')),
-        );
-        await authProvider.signOut();
-        context.go('/login?role=$role');
-        return;
-      }
-      switch (role) {
-        case AppConstants.roleCompany:
-          context.go('/company');
-          break;
+    } else if (mounted && authProvider.user != null) {
+      // Route based on actual user role from Firebase, not the login role
+      final userRole = authProvider.user!.role;
+      switch (userRole) {
         case AppConstants.roleAdmin:
           context.go('/admin');
+          break;
+        case AppConstants.roleCompany:
+          context.go('/company');
           break;
         case AppConstants.roleUser:
         default:
           context.go('/user');
+          break;
       }
     }
   }
 
   Future<void> _signInWithGoogle() async {
     final authProvider = context.read<AuthProvider>();
-    // If already signed in, just navigate
-    if (authProvider.isAuthenticated) {
-      await authProvider.ensureProfileLoaded();
-      final role = authProvider.user?.role ?? widget.role;
-      if (role != widget.role) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Please use the $role login to sign in.')),
-          );
-        }
-        context.go('/login?role=$role');
-        return;
-      }
-      switch (role) {
-        case AppConstants.roleCompany:
-          context.go('/company');
-          break;
-        case AppConstants.roleAdmin:
-          context.go('/admin');
-          break;
-        case AppConstants.roleUser:
-        default:
-          context.go('/user');
-      }
-      return;
-    }
+
     await authProvider.signInWithGoogle(widget.role);
 
     if (authProvider.error != null && mounted) {
@@ -151,27 +92,20 @@ class _LoginScreenState extends State<LoginScreen> {
           backgroundColor: Theme.of(context).colorScheme.error,
         ),
       );
-    } else if (mounted) {
-      await authProvider.ensureProfileLoaded();
-      final role = authProvider.user?.role ?? widget.role;
-      if (role != widget.role) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Please use the $role login to sign in.')),
-        );
-        await authProvider.signOut();
-        context.go('/login?role=$role');
-        return;
-      }
-      switch (role) {
-        case AppConstants.roleCompany:
-          context.go('/company');
-          break;
+    } else if (mounted && authProvider.user != null) {
+      // Route based on actual user role from Firebase, not the login role
+      final userRole = authProvider.user!.role;
+      switch (userRole) {
         case AppConstants.roleAdmin:
           context.go('/admin');
+          break;
+        case AppConstants.roleCompany:
+          context.go('/company');
           break;
         case AppConstants.roleUser:
         default:
           context.go('/user');
+          break;
       }
     }
   }

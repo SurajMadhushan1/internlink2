@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:image_picker/image_picker.dart';
@@ -5,19 +8,18 @@ import 'package:image_picker/image_picker.dart';
 import '../models/company_model.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
-import '../services/storage_service.dart';
 
 class CompanyProvider extends ChangeNotifier {
   CompanyModel? _company;
   List<CompanyModel> _pendingCompanies = [];
-  int _totalCompanies = 0; // NEW
+  int _totalCompanies = 0;
   bool _isLoading = false;
   String? _error;
   bool _disposed = false;
 
   CompanyModel? get company => _company;
   List<CompanyModel> get pendingCompanies => _pendingCompanies;
-  int get totalCompanies => _totalCompanies; // NEW
+  int get totalCompanies => _totalCompanies;
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get isApproved => _company?.isApproved ?? false;
@@ -69,26 +71,57 @@ class CompanyProvider extends ChangeNotifier {
       _clearError();
       await FirestoreService.updateCompany(updatedCompany);
       _company = updatedCompany;
+      notifyListeners();
     } catch (e) {
       _error = e.toString();
+      notifyListeners();
     } finally {
       _setLoading(false);
     }
   }
 
-  Future<void> updateCompanyLogo(XFile imageFile) async {
+  /// Pick from gallery → convert to base64 → store in Firestore
+  Future<void> updateCompanyLogoFromGallery() async {
     if (_company == null) return;
     try {
       _setLoading(true);
       _clearError();
 
-      final logoUrl =
-          await StorageService.uploadCompanyLogo(_company!.id, imageFile);
-      final updatedCompany = _company!.copyWith(logoUrl: logoUrl);
-      await FirestoreService.updateCompany(updatedCompany);
-      _company = updatedCompany;
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 80,
+      );
+
+      if (picked == null) {
+        _setLoading(false);
+        return;
+      }
+
+      final bytes = await File(picked.path).readAsBytes();
+
+      // Check file size (limit to 1MB for base64 storage)
+      if (bytes.length > 1024 * 1024) {
+        throw 'Image size must be less than 1MB';
+      }
+
+      final base64Str = base64Encode(bytes);
+
+      // Update in Firestore
+      await FirestoreService.updateCompanyLogoBase64(
+        ownerUid: _company!.id, // company doc id == ownerUid
+        base64: base64Str,
+      );
+
+      // Update local model
+      _company = _company!.copyWith(logoBase64: base64Str);
+
+      notifyListeners();
     } catch (e) {
       _error = e.toString();
+      notifyListeners();
     } finally {
       _setLoading(false);
     }
@@ -106,7 +139,6 @@ class CompanyProvider extends ChangeNotifier {
     }
   }
 
-  /// NEW: Admin dashboard helper – loads both pending list and total count.
   Future<void> loadPendingCompaniesAndTotals() async {
     try {
       _setLoading(true);
@@ -135,8 +167,10 @@ class CompanyProvider extends ChangeNotifier {
       if (_company?.id == companyId) {
         _company = _company!.copyWith(isApproved: approved);
       }
+      notifyListeners();
     } catch (e) {
       _error = e.toString();
+      notifyListeners();
     } finally {
       _setLoading(false);
     }
@@ -151,8 +185,10 @@ class CompanyProvider extends ChangeNotifier {
       final updated = _company!.copyWith(description: description);
       await FirestoreService.updateCompany(updated);
       _company = updated;
+      notifyListeners();
     } catch (e) {
       _error = e.toString();
+      notifyListeners();
     } finally {
       _setLoading(false);
     }
@@ -167,8 +203,10 @@ class CompanyProvider extends ChangeNotifier {
       final updated = _company!.copyWith(naitaRecognized: naitaRecognized);
       await FirestoreService.updateCompany(updated);
       _company = updated;
+      notifyListeners();
     } catch (e) {
       _error = e.toString();
+      notifyListeners();
     } finally {
       _setLoading(false);
     }

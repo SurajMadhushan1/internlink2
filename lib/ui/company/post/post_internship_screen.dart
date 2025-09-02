@@ -118,7 +118,7 @@ class _PostInternshipScreenState extends State<PostInternshipScreen> {
     }
 
     try {
-      // Create internship model
+      // Create internship model with proper company information
       final internship = InternshipModel(
         id: '', // Will be set by Firestore
         companyId: company.id,
@@ -133,6 +133,8 @@ class _PostInternshipScreenState extends State<PostInternshipScreen> {
             : _stipendController.text.trim(),
         deadline: _deadline!,
         createdAt: DateTime.now(),
+        isActive: true,
+        // IMPORTANT: Include company information in the internship document
         companyName: company.name,
         companyLogoUrl: company.logoUrl,
         companyNaitaRecognized: company.naitaRecognized,
@@ -141,9 +143,11 @@ class _PostInternshipScreenState extends State<PostInternshipScreen> {
       await internshipProvider.createInternship(internship);
 
       // Upload image if selected
-      if (_selectedImage != null) {
+      if (_selectedImage != null &&
+          internshipProvider.companyInternships.isNotEmpty) {
+        final createdInternship = internshipProvider.companyInternships.first;
         await internshipProvider.uploadInternshipImage(
-            internship.id, _selectedImage!);
+            createdInternship.id, _selectedImage!);
       }
 
       if (mounted) {
@@ -200,7 +204,7 @@ class _PostInternshipScreenState extends State<PostInternshipScreen> {
         builder: (context, companyProvider, internshipProvider, child) {
           final company = companyProvider.company;
 
-          if (!companyProvider.isApproved) {
+          if (company == null || !company.isApproved) {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(32.0),
@@ -436,7 +440,7 @@ class _PostInternshipScreenState extends State<PostInternshipScreen> {
                         child: _selectedImage != null
                             ? ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
-                                child: Image.network(
+                                child: Image.asset(
                                   _selectedImage!.path,
                                   fit: BoxFit.cover,
                                   errorBuilder: (context, error, stackTrace) =>

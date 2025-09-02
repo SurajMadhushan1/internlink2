@@ -1,11 +1,66 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../models/internship_model.dart';
 import '../../../providers/application_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/internship_provider.dart';
 import '../../../services/storage_service.dart';
 import '../../shared/widgets/loading_overlay.dart';
+
+/// Inline helper: show Base64 first, else URL, else fallback icon.
+/// No extra files required.
+class _CompanyLogoBox extends StatelessWidget {
+  final String? base64Logo;
+  final String? urlLogo;
+  final double size;
+  final double radius;
+
+  const _CompanyLogoBox({
+    required this.base64Logo,
+    required this.urlLogo,
+    this.size = 24,
+    this.radius = 4,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    ImageProvider? provider;
+
+    if (base64Logo != null && base64Logo!.isNotEmpty) {
+      try {
+        final b64 = base64Logo!.contains(',')
+            ? base64Logo!.split(',').last
+            : base64Logo!;
+        final bytes = Uint8List.fromList(base64Decode(b64));
+        provider = MemoryImage(bytes);
+      } catch (_) {}
+    }
+
+    provider ??= (urlLogo != null && urlLogo!.isNotEmpty)
+        ? NetworkImage(urlLogo!)
+        : null;
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(radius),
+      ),
+      child: provider != null
+          ? ClipRRect(
+              borderRadius: BorderRadius.circular(radius),
+              child: Image(image: provider, fit: BoxFit.cover),
+            )
+          : Icon(Icons.business,
+              size: size * 0.8, color: Theme.of(context).colorScheme.primary),
+    );
+  }
+}
 
 class InternshipDetailScreen extends StatefulWidget {
   final String internshipId;
@@ -46,10 +101,16 @@ class _InternshipDetailScreenState extends State<InternshipDetailScreen> {
         widget.internshipId,
       );
 
-      setState(() {
-        _hasApplied = hasApplied;
-        _isCheckingApplication = false;
-      });
+      if (mounted) {
+        setState(() {
+          _hasApplied = hasApplied;
+          _isCheckingApplication = false;
+        });
+      }
+    } else {
+      if (mounted) {
+        setState(() => _isCheckingApplication = false);
+      }
     }
   }
 
@@ -81,27 +142,23 @@ class _InternshipDetailScreenState extends State<InternshipDetailScreen> {
         userSkills: user.skills,
       );
 
-      if (mounted) {
-        setState(() {
-          _hasApplied = true;
-        });
+      if (!mounted) return;
+      setState(() => _hasApplied = true);
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Application submitted successfully!'),
-            backgroundColor: Theme.of(context).colorScheme.primary,
-          ),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Application submitted successfully!'),
+          backgroundColor: Theme.of(context).colorScheme.primary,
+        ),
+      );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to submit application: $e'),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to submit application: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
     }
   }
 
@@ -110,7 +167,7 @@ class _InternshipDetailScreenState extends State<InternshipDetailScreen> {
     return Scaffold(
       body: Consumer<InternshipProvider>(
         builder: (context, provider, child) {
-          final internship = provider.selectedInternship;
+          final InternshipModel? internship = provider.selectedInternship;
 
           if (provider.isLoading || internship == null) {
             return const Center(child: CircularProgressIndicator());
@@ -118,39 +175,20 @@ class _InternshipDetailScreenState extends State<InternshipDetailScreen> {
 
           return CustomScrollView(
             slivers: [
-              // App bar with image
+              // App bar with header image
               SliverAppBar(
                 expandedHeight: 200,
                 pinned: true,
                 flexibleSpace: FlexibleSpaceBar(
-                  background: internship.imageUrl != null
+                  background: internship.imageUrl != null &&
+                          internship.imageUrl!.isNotEmpty
                       ? Image.network(
                           internship.imageUrl!,
                           fit: BoxFit.cover,
                           errorBuilder: (context, error, stackTrace) =>
-                              Container(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .primary
-                                .withOpacity(0.1),
-                            child: Icon(
-                              Icons.work,
-                              size: 64,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                          ),
+                              _HeaderFallbackIcon(),
                         )
-                      : Container(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withOpacity(0.1),
-                          child: Icon(
-                            Icons.work,
-                            size: 64,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        ),
+                      : _HeaderFallbackIcon(),
                 ),
               ),
 
@@ -161,40 +199,26 @@ class _InternshipDetailScreenState extends State<InternshipDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Job title
+                      // Title
                       Text(
                         internship.title,
                         style: Theme.of(context)
                             .textTheme
                             .headlineMedium
-                            ?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                            ?.copyWith(fontWeight: FontWeight.bold),
                       ),
-
                       const SizedBox(height: 8),
 
-                      // Company info
+                      // Company info (with Base64 logo)
                       Row(
                         children: [
-                          if (internship.companyLogoUrl != null) ...[
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
-                              child: Image.network(
-                                internship.companyLogoUrl!,
-                                width: 24,
-                                height: 24,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) =>
-                                    Icon(
-                                  Icons.business,
-                                  size: 24,
-                                  color: Theme.of(context).colorScheme.primary,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                          ],
+                          _CompanyLogoBox(
+                            base64Logo: internship.companyLogoBase64,
+                            urlLogo: internship.companyLogoUrl,
+                            size: 24,
+                            radius: 4,
+                          ),
+                          const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               internship.companyName ?? 'Company',
@@ -208,7 +232,7 @@ class _InternshipDetailScreenState extends State<InternshipDetailScreen> {
                                   ),
                             ),
                           ),
-                          if (internship.companyNaitaRecognized == true) ...[
+                          if (internship.companyNaitaRecognized == true)
                             Container(
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 8, vertical: 4),
@@ -225,7 +249,6 @@ class _InternshipDetailScreenState extends State<InternshipDetailScreen> {
                                 ),
                               ),
                             ),
-                          ],
                         ],
                       ),
 
@@ -237,26 +260,23 @@ class _InternshipDetailScreenState extends State<InternshipDetailScreen> {
                         label: 'Location',
                         value: internship.location,
                       ),
-
                       _InfoRow(
                         icon: Icons.work,
                         label: 'Type',
                         value: internship.type,
                       ),
-
                       _InfoRow(
                         icon: Icons.category,
                         label: 'Category',
                         value: internship.category,
                       ),
-
-                      if (internship.stipend != null)
+                      if (internship.stipend != null &&
+                          internship.stipend!.isNotEmpty)
                         _InfoRow(
                           icon: Icons.attach_money,
                           label: 'Stipend',
                           value: internship.stipend!,
                         ),
-
                       _InfoRow(
                         icon: Icons.schedule,
                         label: 'Deadline',
@@ -270,18 +290,18 @@ class _InternshipDetailScreenState extends State<InternshipDetailScreen> {
                       // Description
                       Text(
                         'About this internship',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleLarge
+                            ?.copyWith(fontWeight: FontWeight.bold),
                       ),
-
                       const SizedBox(height: 8),
-
                       Text(
                         internship.description,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              height: 1.5,
-                            ),
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(height: 1.5),
                       ),
 
                       const SizedBox(height: 24),
@@ -290,10 +310,10 @@ class _InternshipDetailScreenState extends State<InternshipDetailScreen> {
                       if (internship.skills.isNotEmpty) ...[
                         Text(
                           'Required Skills',
-                          style:
-                              Theme.of(context).textTheme.titleLarge?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleLarge
+                              ?.copyWith(fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 8),
                         Wrap(
@@ -325,7 +345,8 @@ class _InternshipDetailScreenState extends State<InternshipDetailScreen> {
                                     ? null
                                     : _applyToInternship,
                                 icon: Icon(
-                                    _hasApplied ? Icons.check : Icons.send),
+                                  _hasApplied ? Icons.check : Icons.send,
+                                ),
                                 label: Text(
                                   _isCheckingApplication
                                       ? 'Checking...'
@@ -363,6 +384,20 @@ class _InternshipDetailScreenState extends State<InternshipDetailScreen> {
   }
 }
 
+class _HeaderFallbackIcon extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+      child: Icon(
+        Icons.work,
+        size: 64,
+        color: Theme.of(context).colorScheme.primary,
+      ),
+    );
+  }
+}
+
 class _InfoRow extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -378,18 +413,16 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final color = isUrgent
+        ? Theme.of(context).colorScheme.error
+        : Theme.of(context).colorScheme.onSurface.withOpacity(0.6);
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            icon,
-            size: 20,
-            color: isUrgent
-                ? Theme.of(context).colorScheme.error
-                : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-          ),
+          Icon(icon, size: 20, color: color),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -397,12 +430,10 @@ class _InfoRow extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withOpacity(0.6),
-                      ),
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: color),
                 ),
                 Text(
                   value,

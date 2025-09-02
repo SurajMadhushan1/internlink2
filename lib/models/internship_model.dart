@@ -15,9 +15,10 @@ class InternshipModel {
   final DateTime createdAt;
   final bool isActive;
 
-  // Additional fields for display
+  // Display fields hydrated at create/read time
   final String? companyName;
   final String? companyLogoUrl;
+  final String? companyLogoBase64; // NEW
   final bool? companyNaitaRecognized;
 
   InternshipModel({
@@ -36,6 +37,7 @@ class InternshipModel {
     this.isActive = true,
     this.companyName,
     this.companyLogoUrl,
+    this.companyLogoBase64, // NEW
     this.companyNaitaRecognized,
   });
 
@@ -57,6 +59,7 @@ class InternshipModel {
       isActive: data['isActive'] ?? true,
       companyName: data['companyName'],
       companyLogoUrl: data['companyLogoUrl'],
+      companyLogoBase64: data['companyLogoBase64'], // NEW
       companyNaitaRecognized: data['companyNaitaRecognized'],
     );
   }
@@ -77,33 +80,22 @@ class InternshipModel {
       'isActive': isActive,
       'companyName': companyName,
       'companyLogoUrl': companyLogoUrl,
+      'companyLogoBase64': companyLogoBase64, // NEW
       'companyNaitaRecognized': companyNaitaRecognized,
-      // Add search keywords for better filtering
       'searchKeywords': _generateSearchKeywords(),
     };
   }
 
   List<String> _generateSearchKeywords() {
     final keywords = <String>[];
-
-    // Add title words
     keywords.addAll(title.toLowerCase().split(' '));
-
-    // Add company name words if available
     if (companyName != null) {
       keywords.addAll(companyName!.toLowerCase().split(' '));
     }
-
-    // Add skills
     keywords.addAll(skills.map((s) => s.toLowerCase()));
-
-    // Add category
     keywords.add(category.toLowerCase());
-
-    // Add location
     keywords.addAll(location.toLowerCase().split(' '));
-
-    return keywords.toSet().toList(); // Remove duplicates
+    return keywords.toSet().toList();
   }
 
   InternshipModel copyWith({
@@ -122,6 +114,7 @@ class InternshipModel {
     bool? isActive,
     String? companyName,
     String? companyLogoUrl,
+    String? companyLogoBase64, // NEW
     bool? companyNaitaRecognized,
   }) {
     return InternshipModel(
@@ -140,6 +133,7 @@ class InternshipModel {
       isActive: isActive ?? this.isActive,
       companyName: companyName ?? this.companyName,
       companyLogoUrl: companyLogoUrl ?? this.companyLogoUrl,
+      companyLogoBase64: companyLogoBase64 ?? this.companyLogoBase64,
       companyNaitaRecognized:
           companyNaitaRecognized ?? this.companyNaitaRecognized,
     );
@@ -150,28 +144,19 @@ class InternshipModel {
   String get timeLeft {
     final now = DateTime.now();
     final difference = deadline.difference(now);
-
     if (difference.isNegative) return 'Expired';
-
-    if (difference.inDays > 0) {
-      return '${difference.inDays} days left';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours} hours left';
-    } else {
-      return '${difference.inMinutes} minutes left';
-    }
+    if (difference.inDays > 0) return '${difference.inDays} days left';
+    if (difference.inHours > 0) return '${difference.inHours} hours left';
+    return '${difference.inMinutes} minutes left';
   }
 
   @override
-  String toString() {
-    return 'InternshipModel(id: $id, title: $title, companyName: $companyName)';
-  }
+  String toString() =>
+      'InternshipModel(id: $id, title: $title, companyName: $companyName)';
 
   @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-    return other is InternshipModel && other.id == id;
-  }
+  bool operator ==(Object other) =>
+      identical(this, other) || (other is InternshipModel && other.id == id);
 
   @override
   int get hashCode => id.hashCode;

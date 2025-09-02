@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -7,6 +10,55 @@ import '../../../models/internship_model.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/internship_provider.dart';
 import '../../shared/widgets/skeleton_loader.dart';
+
+// Inline helper: show Base64 first, else URL, else icon
+class _CompanyLogoBox extends StatelessWidget {
+  final String? base64Logo;
+  final String? urlLogo;
+  final double size;
+  final double radius;
+
+  const _CompanyLogoBox({
+    required this.base64Logo,
+    required this.urlLogo,
+    this.size = 48,
+    this.radius = 8,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    ImageProvider? provider;
+
+    if (base64Logo != null && base64Logo!.isNotEmpty) {
+      try {
+        final b64 = base64Logo!.contains(',')
+            ? base64Logo!.split(',').last
+            : base64Logo!;
+        final bytes = Uint8List.fromList(base64Decode(b64));
+        provider = MemoryImage(bytes);
+      } catch (_) {}
+    }
+
+    provider ??= (urlLogo != null && urlLogo!.isNotEmpty)
+        ? NetworkImage(urlLogo!)
+        : null;
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(radius),
+      ),
+      child: provider != null
+          ? ClipRRect(
+              borderRadius: BorderRadius.circular(radius),
+              child: Image(image: provider, fit: BoxFit.cover),
+            )
+          : Icon(Icons.business, color: Theme.of(context).colorScheme.primary),
+    );
+  }
+}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -25,7 +77,6 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<InternshipProvider>().loadInternships(refresh: true);
     });
-
     _scrollController.addListener(_onScroll);
   }
 
@@ -66,18 +117,16 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Text(
               'Hello, ${authProvider.user?.name ?? 'Student'}',
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyLarge
+                  ?.copyWith(fontWeight: FontWeight.w600),
             ),
             Text(
               'Find your perfect internship',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withOpacity(0.7),
-                  ),
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withOpacity(0.7)),
             ),
           ],
         ),
@@ -85,10 +134,8 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             icon: const Icon(Icons.notifications),
             onPressed: () {
-              // Navigate to notifications (not implemented in this version)
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Notifications coming soon!')),
-              );
+                  const SnackBar(content: Text('Notifications coming soon!')));
             },
           ),
         ],
@@ -97,7 +144,6 @@ class _HomeScreenState extends State<HomeScreen> {
         onRefresh: _onRefresh,
         child: Column(
           children: [
-            // Search bar
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: TextField(
@@ -118,38 +164,23 @@ class _HomeScreenState extends State<HomeScreen> {
                 onChanged: _onSearchChanged,
               ),
             ),
-
-            // Category chips
             Consumer<InternshipProvider>(
               builder: (context, provider, child) {
-                return Container(
+                return SizedBox(
                   height: 50,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
                     scrollDirection: Axis.horizontal,
                     itemCount: AppConstants.categories.length,
                     itemBuilder: (context, index) {
                       final category = AppConstants.categories[index];
                       final isSelected = provider.selectedCategory == category;
-
                       return Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: FilterChip(
                           label: Text(category),
                           selected: isSelected,
                           onSelected: (_) => _onCategorySelected(category),
-                          backgroundColor: isSelected
-                              ? Theme.of(context).colorScheme.primary
-                              : Theme.of(context)
-                                  .colorScheme
-                                  .surfaceContainerHighest,
-                          labelStyle: TextStyle(
-                            color: isSelected
-                                ? Theme.of(context).colorScheme.onPrimary
-                                : Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
-                          ),
                         ),
                       );
                     },
@@ -157,10 +188,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
               },
             ),
-
             const SizedBox(height: 8),
-
-            // Internships list
             Expanded(
               child: Consumer<InternshipProvider>(
                 builder: (context, provider, child) {
@@ -173,45 +201,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     );
                   }
 
+                  if (provider.error != null) {
+                    return Center(child: Text(provider.error!));
+                  }
+
                   if (provider.internships.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.work_off,
-                            size: 64,
-                            color: Theme.of(context).colorScheme.outline,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'No internships found',
-                            style: Theme.of(context)
-                                .textTheme
-                                .headlineSmall
-                                ?.copyWith(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurface
-                                      .withOpacity(0.7),
-                                ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Try adjusting your search or category filter',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
-                                ?.copyWith(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurface
-                                      .withOpacity(0.5),
-                                ),
-                          ),
-                        ],
-                      ),
-                    );
+                    return const Center(child: Text('No internships found'));
                   }
 
                   return ListView.builder(
@@ -226,13 +221,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: Center(child: CircularProgressIndicator()),
                         );
                       }
-
                       final internship = provider.internships[index];
                       return InternshipCard(
                         internship: internship,
-                        onTap: () {
-                          context.go('/user/internship/${internship.id}');
-                        },
+                        onTap: () =>
+                            context.go('/user/internship/${internship.id}'),
                       );
                     },
                   );
@@ -265,184 +258,124 @@ class InternshipCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Company info
-              Row(
-                children: [
-                  // Company logo
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .primary
-                          .withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: internship.companyLogoUrl != null
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.network(
-                              internship.companyLogoUrl!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  Icon(
-                                Icons.business,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                            ),
-                          )
-                        : Icon(
-                            Icons.business,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                  ),
-
-                  const SizedBox(width: 12),
-
-                  Expanded(
-                    child: Column(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(
+              children: [
+                _CompanyLogoBox(
+                  base64Logo: internship.companyLogoBase64,
+                  urlLogo: internship.companyLogoUrl,
+                  size: 48,
+                  radius: 8,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                internship.companyName ?? 'Company',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodyLarge
-                                    ?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                              ),
+                        Row(children: [
+                          Expanded(
+                            child: Text(
+                              internship.companyName ?? 'Company',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyLarge
+                                  ?.copyWith(fontWeight: FontWeight.w600),
                             ),
-                            if (internship.companyNaitaRecognized == true) ...[
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.green.shade100,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text(
-                                  'NAITA',
-                                  style: TextStyle(
+                          ),
+                          if (internship.companyNaitaRecognized == true)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.green.shade100,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                'NAITA',
+                                style: TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.w600,
-                                    color: Colors.green.shade800,
-                                  ),
-                                ),
+                                    color: Colors.green.shade800),
                               ),
-                            ],
-                          ],
-                        ),
+                            ),
+                        ]),
                         Text(
                           internship.location,
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurface
-                                        .withOpacity(0.6),
-                                  ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-
-              // Job title
-              Text(
-                internship.title,
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-
-              const SizedBox(height: 8),
-
-              // Description (truncated)
-              Text(
-                internship.description,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withOpacity(0.8),
-                    ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-
-              const SizedBox(height: 16),
-
-              // Skills chips
-              if (internship.skills.isNotEmpty) ...[
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 4,
-                  children: internship.skills.take(3).map((skill) {
-                    return Chip(
-                      label: Text(
-                        skill,
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 12),
-              ],
-
-              // Footer info
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.access_time,
-                        size: 16,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withOpacity(0.6),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        internship.timeLeft,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: internship.isExpired
-                                  ? Theme.of(context).colorScheme.error
-                                  : Theme.of(context)
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(
+                                  color: Theme.of(context)
                                       .colorScheme
                                       .onSurface
-                                      .withOpacity(0.6),
-                            ),
-                      ),
-                    ],
-                  ),
-                  if (internship.stipend != null) ...[
-                    Text(
-                      internship.stipend!,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                    ),
-                  ],
-                ],
+                                      .withOpacity(0.6)),
+                        ),
+                      ]),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              internship.title,
+              style: Theme.of(context)
+                  .textTheme
+                  .headlineSmall
+                  ?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              internship.description,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withOpacity(0.8)),
+            ),
+            const SizedBox(height: 16),
+            if (internship.skills.isNotEmpty)
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: internship.skills.take(3).map((skill) {
+                  return Chip(
+                    label: Text(skill, style: const TextStyle(fontSize: 12)),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  );
+                }).toList(),
               ),
-            ],
-          ),
+            const SizedBox(height: 12),
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              Row(children: [
+                Icon(Icons.access_time,
+                    size: 16,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withOpacity(0.6)),
+                const SizedBox(width: 4),
+                Text(
+                  internship.timeLeft,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: internship.isExpired
+                            ? Theme.of(context).colorScheme.error
+                            : Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withOpacity(0.6),
+                      ),
+                ),
+              ]),
+              if (internship.stipend != null)
+                Text(
+                  internship.stipend!,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                ),
+            ]),
+          ]),
         ),
       ),
     );

@@ -103,23 +103,6 @@ class AuthSelectorScreen extends StatelessWidget {
                   ),
                 ),
               ),
-
-              const SizedBox(height: 32),
-
-              // Admin access (hidden/discrete)
-              Center(
-                child: GestureDetector(
-                  onTap: () {
-                    context.go('/login?role=${AppConstants.roleAdmin}');
-                  },
-                  child: Text(
-                    'Admin Access',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.outline,
-                        ),
-                  ),
-                ),
-              ),
             ],
           ),
         ),

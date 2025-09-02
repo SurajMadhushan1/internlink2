@@ -1,6 +1,10 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../core/constants/app_constants.dart';
 import '../models/user_model.dart';
@@ -18,8 +22,6 @@ class AuthProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
-  // Consider the user authenticated as soon as FirebaseAuth has a user.
-  // Firestore profile may still be loading asynchronously.
   bool get isAuthenticated => _firebaseUser != null;
   bool get isUser => _user?.role == AppConstants.roleUser;
   bool get isCompany => _user?.role == AppConstants.roleCompany;
@@ -39,12 +41,10 @@ class AuthProvider extends ChangeNotifier {
     if (firebaseUser != null) {
       try {
         _user = await FirestoreService.getUser(firebaseUser.uid);
-        // If this is the first login and the profile isn't in Firestore, create it
         _user ??= await FirestoreService.createUserFromFirebaseUser(
           firebaseUser,
         );
 
-        // Ensure a company document exists for company users.
         if (_user?.role == AppConstants.roleCompany) {
           final existingCompany =
               await FirestoreService.getCompanyByOwner(firebaseUser.uid);
@@ -74,7 +74,6 @@ class AuthProvider extends ChangeNotifier {
 
       await AuthService.signInWithEmailPassword(email, password,
           roleForCreation: roleForCreation);
-      // Load profile immediately so UI has role right away
       await ensureProfileLoaded();
     } catch (e) {
       _error = e.toString();
@@ -114,7 +113,6 @@ class AuthProvider extends ChangeNotifier {
       _clearError();
 
       await AuthService.signInWithGoogle(role);
-      // Load profile immediately so UI has role right away
       await ensureProfileLoaded();
     } catch (e) {
       _error = e.toString();
@@ -163,6 +161,36 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  // NEW: pick from gallery -> encode base64 -> store in Firestore -> update local model
+  Future<void> updateUserPhotoFromGallery() async {
+    if (_firebaseUser == null || _user == null) return;
+    try {
+      _setLoading(true);
+      _clearError();
+
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(source: ImageSource.gallery);
+      if (picked == null) {
+        _setLoading(false);
+        return;
+      }
+
+      final bytes = await File(picked.path).readAsBytes();
+      final base64Str = base64Encode(bytes);
+
+      await FirestoreService.updateUserPhotoBase64(
+        uid: _user!.uid,
+        base64: base64Str,
+      );
+
+      _user = _user!.copyWith(photoBase64: base64Str);
+    } catch (e) {
+      _error = e.toString();
+    } finally {
+      _setLoading(false);
+    }
+  }
+
   void _setLoading(bool loading) {
     _isLoading = loading;
     notifyListeners();
@@ -177,7 +205,6 @@ class AuthProvider extends ChangeNotifier {
     _clearError();
   }
 
-  // Ensure _user is loaded/created based on the current Firebase user
   Future<UserModel?> ensureProfileLoaded() async {
     final fbUser = _firebaseUser;
     if (fbUser == null) return null;
