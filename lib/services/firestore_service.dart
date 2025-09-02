@@ -10,9 +10,7 @@ import '../models/user_model.dart';
 class FirestoreService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // -----------------------------
-  // USER
-  // -----------------------------
+  // ----------------------------- USER -----------------------------
   static Future<UserModel?> getUser(String uid) async {
     final doc = await _db.collection('users').doc(uid).get();
     return doc.exists ? UserModel.fromFirestore(doc) : null;
@@ -71,14 +69,12 @@ class FirestoreService {
     }, SetOptions(merge: true));
   }
 
-  // -----------------------------
-  // COMPANY
-  // -----------------------------
+  // ----------------------------- COMPANY -----------------------------
   static Future<CompanyModel?> getCompanyByOwner(String ownerUid) async {
     final doc = await _db.collection('companies').doc(ownerUid).get();
     if (doc.exists) return CompanyModel.fromFirestore(doc);
 
-    // legacy fallback
+    // legacy: random doc id; query by ownerUid
     final q = await _db
         .collection('companies')
         .where('ownerUid', isEqualTo: ownerUid)
@@ -117,42 +113,12 @@ class FirestoreService {
     }, SetOptions(merge: true));
   }
 
-  static Future<List<CompanyModel>> getPendingCompanies() async {
-    final q = await _db
-        .collection('companies')
-        .where('isApproved', isEqualTo: false)
-        .get();
-
-    var list = q.docs.map((d) => CompanyModel.fromFirestore(d)).toList();
-
-    final snap = await _db.collection('companies').get();
-    final extras = snap.docs
-        .where((d) => d.data()['isApproved'] != true)
-        .map((d) => CompanyModel.fromFirestore(d))
-        .toList();
-
-    final ids = list.map((c) => c.id).toSet();
-    for (final c in extras) {
-      if (!ids.contains(c.id)) list.add(c);
-    }
-
-    list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return list;
-  }
-
-  static Future<List<CompanyModel>> getAllCompanies() async {
-    final query = await _db.collection('companies').get();
-    final list = query.docs.map((d) => CompanyModel.fromFirestore(d)).toList()
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return list;
-  }
-
   static Future<List<CompanyModel>> getApprovedCompanies() async {
     final query = await _db
         .collection('companies')
         .where('isApproved', isEqualTo: true)
         .get();
-    final list = query.docs.map((d) => CompanyModel.fromFirestore(d)).toList()
+    final list = query.docs.map(CompanyModel.fromFirestore).toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return list;
   }
@@ -177,21 +143,14 @@ class FirestoreService {
     return CompanyModel.fromFirestore(snap);
   }
 
-  static Future<void> approveCompany(String companyId, bool approved) async {
-    await _db
-        .collection('companies')
-        .doc(companyId)
-        .set({'isApproved': approved}, SetOptions(merge: true));
-  }
+  // ----------------------------- INTERNSHIPS -----------------------------
 
-  // -----------------------------
-  // INTERNSHIPS
-  // -----------------------------
+  /// List fetch that **hydrates** missing company fields (Base64/URL/name/NAITA).
   static Future<List<InternshipModel>> getInternships({
     String? category,
     String? searchQuery,
     int limit = 20,
-    DocumentSnapshot? lastDocument,
+    DocumentSnapshot? lastDocument, // not used in this sample
   }) async {
     Query query = _db
         .collection('internships')
@@ -203,8 +162,41 @@ class FirestoreService {
     }
 
     final snapshot = await query.get();
-    var internships =
-        snapshot.docs.map((d) => InternshipModel.fromFirestore(d)).toList();
+    var internships = snapshot.docs.map(InternshipModel.fromFirestore).toList();
+
+    // Hydrate any item missing company display fields
+    final toHydrate = internships
+        .where((i) =>
+            (i.companyName == null || i.companyLogoBase64 == null) &&
+            i.companyId.isNotEmpty)
+        .toList();
+
+    if (toHydrate.isNotEmpty) {
+      final companyIds = toHydrate.map((i) => i.companyId).toSet().toList();
+      final companySnaps = await _db
+          .collection('companies')
+          .where(FieldPath.documentId, whereIn: companyIds)
+          .get();
+
+      final companies = {
+        for (final d in companySnaps.docs) d.id: CompanyModel.fromFirestore(d)
+      };
+
+      internships = internships
+          .map((i) => (companies[i.companyId] != null &&
+                  (i.companyName == null || i.companyLogoBase64 == null))
+              ? i.copyWith(
+                  companyName: i.companyName ?? companies[i.companyId]!.name,
+                  companyLogoUrl:
+                      i.companyLogoUrl ?? companies[i.companyId]!.logoUrl,
+                  companyLogoBase64:
+                      i.companyLogoBase64 ?? companies[i.companyId]!.logoBase64,
+                  companyNaitaRecognized: i.companyNaitaRecognized ??
+                      companies[i.companyId]!.naitaRecognized,
+                )
+              : i)
+          .toList();
+    }
 
     internships.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
@@ -227,7 +219,6 @@ class FirestoreService {
 
     final internship = InternshipModel.fromFirestore(doc);
 
-    // Hydrate from company if any display fields missing
     if ((internship.companyName == null ||
             internship.companyLogoBase64 == null) &&
         internship.companyId.isNotEmpty) {
@@ -236,7 +227,7 @@ class FirestoreService {
         return internship.copyWith(
           companyName: company.name,
           companyLogoUrl: company.logoUrl,
-          companyLogoBase64: company.logoBase64, // NEW
+          companyLogoBase64: company.logoBase64,
           companyNaitaRecognized: company.naitaRecognized,
         );
       }
@@ -251,9 +242,7 @@ class FirestoreService {
         .where('companyId', isEqualTo: companyId)
         .get();
 
-    final list = query.docs
-        .map((doc) => InternshipModel.fromFirestore(doc))
-        .toList()
+    final list = query.docs.map(InternshipModel.fromFirestore).toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return list;
   }
@@ -268,8 +257,7 @@ class FirestoreService {
     final withCompanyFields = internship.copyWith(
       companyName: internship.companyName ?? company?.name,
       companyLogoUrl: internship.companyLogoUrl ?? company?.logoUrl,
-      companyLogoBase64:
-          internship.companyLogoBase64 ?? company?.logoBase64, // NEW
+      companyLogoBase64: internship.companyLogoBase64 ?? company?.logoBase64,
       companyNaitaRecognized:
           internship.companyNaitaRecognized ?? company?.naitaRecognized,
     );
@@ -293,7 +281,7 @@ class FirestoreService {
     });
   }
 
-  /// Optional helper to backfill existing internships with company Base64/logo.
+  /// Backfill helper for existing rows that miss company fields (run once).
   static Future<void> batchUpdateInternshipsWithCompanyInfo() async {
     final companiesSnapshot = await _db.collection('companies').get();
     final companies = {
@@ -320,9 +308,65 @@ class FirestoreService {
     await batch.commit();
   }
 
-  // -----------------------------
-  // APPLICATIONS
-  // -----------------------------
+  // ----------------------------- INTERNAL -----------------------------
+  static Future<void> _ensureCompanyDocForOwner({
+    required String ownerUid,
+    String name = '',
+  }) async {
+    final ref = _db.collection('companies').doc(ownerUid);
+    final snap = await ref.get();
+    if (!snap.exists) {
+      await ref.set({
+        'ownerUid': ownerUid,
+        'name': name,
+        'description': '',
+        'linkedinUrl': '',
+        'isApproved': false,
+        'naitaRecognized': false,
+        'createdAt': Timestamp.now(),
+      });
+    }
+  }
+
+  // ----------------------------- COMPANIES (Admin) -----------------------------
+  static Future<List<CompanyModel>> getPendingCompanies() async {
+    final q = await _db
+        .collection('companies')
+        .where('isApproved', isEqualTo: false)
+        .get();
+
+    var list = q.docs.map((d) => CompanyModel.fromFirestore(d)).toList();
+
+    // Legacy safety: include any docs where isApproved not true
+    final snap = await _db.collection('companies').get();
+    final extras = snap.docs
+        .where((d) => d.data()['isApproved'] != true)
+        .map((d) => CompanyModel.fromFirestore(d))
+        .toList();
+
+    final ids = list.map((c) => c.id).toSet();
+    for (final c in extras) {
+      if (!ids.contains(c.id)) list.add(c);
+    }
+    list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return list;
+  }
+
+  static Future<List<CompanyModel>> getAllCompanies() async {
+    final query = await _db.collection('companies').get();
+    final list = query.docs.map((d) => CompanyModel.fromFirestore(d)).toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return list;
+  }
+
+  static Future<void> approveCompany(String companyId, bool approved) async {
+    await _db
+        .collection('companies')
+        .doc(companyId)
+        .set({'isApproved': approved}, SetOptions(merge: true));
+  }
+
+// ----------------------------- APPLICATIONS -----------------------------
   static Future<String> createApplication(ApplicationModel application) async {
     final docRef =
         await _db.collection('applications').add(application.toFirestore());
@@ -336,7 +380,6 @@ class FirestoreService {
         .where('userId', isEqualTo: userId)
         .orderBy('createdAt', descending: true)
         .get();
-
     return query.docs
         .map((doc) => ApplicationModel.fromFirestore(doc))
         .toList();
@@ -348,7 +391,6 @@ class FirestoreService {
         .where('jobId', isEqualTo: jobId)
         .orderBy('createdAt', descending: true)
         .get();
-
     return query.docs
         .map((doc) => ApplicationModel.fromFirestore(doc))
         .toList();
@@ -361,7 +403,6 @@ class FirestoreService {
         .where('companyId', isEqualTo: companyId)
         .orderBy('createdAt', descending: true)
         .get();
-
     return query.docs
         .map((doc) => ApplicationModel.fromFirestore(doc))
         .toList();
@@ -382,29 +423,6 @@ class FirestoreService {
         .where('jobId', isEqualTo: jobId)
         .limit(1)
         .get();
-
     return query.docs.isNotEmpty;
-  }
-
-  // -----------------------------
-  // INTERNAL
-  // -----------------------------
-  static Future<void> _ensureCompanyDocForOwner({
-    required String ownerUid,
-    String name = '',
-  }) async {
-    final ref = _db.collection('companies').doc(ownerUid);
-    final snap = await ref.get();
-    if (!snap.exists) {
-      await ref.set({
-        'ownerUid': ownerUid,
-        'name': name,
-        'description': '',
-        'linkedinUrl': '',
-        'isApproved': false,
-        'naitaRecognized': false,
-        'createdAt': Timestamp.now(),
-      });
-    }
   }
 }

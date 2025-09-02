@@ -11,7 +11,7 @@ import '../../../providers/auth_provider.dart';
 import '../../../providers/internship_provider.dart';
 import '../../shared/widgets/skeleton_loader.dart';
 
-// Inline helper: show Base64 first, else URL, else icon
+// Shows Base64 first, else URL, else placeholder icon.
 class _CompanyLogoBox extends StatelessWidget {
   final String? base64Logo;
   final String? urlLogo;
@@ -31,10 +31,10 @@ class _CompanyLogoBox extends StatelessWidget {
 
     if (base64Logo != null && base64Logo!.isNotEmpty) {
       try {
-        final b64 = base64Logo!.contains(',')
+        final pure = base64Logo!.contains(',')
             ? base64Logo!.split(',').last
             : base64Logo!;
-        final bytes = Uint8List.fromList(base64Decode(b64));
+        final bytes = Uint8List.fromList(base64Decode(pure));
         provider = MemoryImage(bytes);
       } catch (_) {}
     }
@@ -135,7 +135,8 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.notifications),
             onPressed: () {
               ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Notifications coming soon!')));
+                const SnackBar(content: Text('Notifications coming soon!')),
+              );
             },
           ),
         ],

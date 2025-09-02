@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -8,6 +11,61 @@ import '../../../providers/auth_provider.dart';
 import '../../../providers/company_provider.dart';
 import '../../../providers/internship_provider.dart';
 import '../../shared/widgets/skeleton_loader.dart';
+
+/// Small reusable logo box: Base64 first, then URL, then placeholder icon.
+class _CompanyLogoBox extends StatelessWidget {
+  final String? base64Logo;
+  final String? urlLogo;
+  final double size;
+  final double radius;
+
+  const _CompanyLogoBox({
+    required this.base64Logo,
+    required this.urlLogo,
+    this.size = 60,
+    this.radius = 8,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    ImageProvider? provider;
+
+    // Try Base64 (supports both raw base64 and data URLs)
+    if (base64Logo != null && base64Logo!.isNotEmpty) {
+      try {
+        final pure = base64Logo!.contains(',')
+            ? base64Logo!.split(',').last
+            : base64Logo!;
+        final bytes = Uint8List.fromList(base64Decode(pure));
+        provider = MemoryImage(bytes);
+      } catch (_) {}
+    }
+
+    // Fallback to URL
+    provider ??= (urlLogo != null && urlLogo!.isNotEmpty)
+        ? NetworkImage(urlLogo!)
+        : null;
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(radius),
+      ),
+      child: provider != null
+          ? ClipRRect(
+              borderRadius: BorderRadius.circular(radius),
+              child: Image(image: provider, fit: BoxFit.cover),
+            )
+          : Icon(
+              Icons.business,
+              size: size * 0.5,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+    );
+  }
+}
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -77,6 +135,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           return RefreshIndicator(
             onRefresh: _loadData,
             child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -133,41 +192,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         children: [
                           Row(
                             children: [
-                              // Company logo
-                              Container(
-                                width: 60,
-                                height: 60,
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .primary
-                                      .withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: company.logoUrl != null
-                                    ? ClipRRect(
-                                        borderRadius: BorderRadius.circular(8),
-                                        child: Image.network(
-                                          company.logoUrl!,
-                                          fit: BoxFit.cover,
-                                          errorBuilder:
-                                              (context, error, stackTrace) =>
-                                                  Icon(
-                                            Icons.business,
-                                            size: 30,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primary,
-                                          ),
-                                        ),
-                                      )
-                                    : Icon(
-                                        Icons.business,
-                                        size: 30,
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .primary,
-                                      ),
+                              // Company logo (Base64 → URL → placeholder)
+                              _CompanyLogoBox(
+                                base64Logo: company.logoBase64,
+                                urlLogo: company.logoUrl,
+                                size: 60,
+                                radius: 8,
                               ),
 
                               const SizedBox(width: 16),
@@ -397,10 +427,7 @@ class _StatCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Icon(
-                  icon,
-                  color: color,
-                ),
+                Icon(icon, color: color),
                 Text(
                   value,
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(

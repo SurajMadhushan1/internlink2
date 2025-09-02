@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class CompanyModel {
-  final String id; // == ownerUid in your scheme
+  final String id; // doc id (ownerUid for new scheme; random for legacy)
   final String ownerUid;
   final String name;
   final String description;

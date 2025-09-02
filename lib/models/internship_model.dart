@@ -15,10 +15,10 @@ class InternshipModel {
   final DateTime createdAt;
   final bool isActive;
 
-  // Display fields hydrated at create/read time
+  // Display fields (denormalized for fast listing)
   final String? companyName;
   final String? companyLogoUrl;
-  final String? companyLogoBase64; // NEW
+  final String? companyLogoBase64;
   final bool? companyNaitaRecognized;
 
   InternshipModel({
@@ -37,7 +37,7 @@ class InternshipModel {
     this.isActive = true,
     this.companyName,
     this.companyLogoUrl,
-    this.companyLogoBase64, // NEW
+    this.companyLogoBase64,
     this.companyNaitaRecognized,
   });
 
@@ -59,7 +59,7 @@ class InternshipModel {
       isActive: data['isActive'] ?? true,
       companyName: data['companyName'],
       companyLogoUrl: data['companyLogoUrl'],
-      companyLogoBase64: data['companyLogoBase64'], // NEW
+      companyLogoBase64: data['companyLogoBase64'],
       companyNaitaRecognized: data['companyNaitaRecognized'],
     );
   }
@@ -80,7 +80,7 @@ class InternshipModel {
       'isActive': isActive,
       'companyName': companyName,
       'companyLogoUrl': companyLogoUrl,
-      'companyLogoBase64': companyLogoBase64, // NEW
+      'companyLogoBase64': companyLogoBase64,
       'companyNaitaRecognized': companyNaitaRecognized,
       'searchKeywords': _generateSearchKeywords(),
     };
@@ -114,7 +114,7 @@ class InternshipModel {
     bool? isActive,
     String? companyName,
     String? companyLogoUrl,
-    String? companyLogoBase64, // NEW
+    String? companyLogoBase64,
     bool? companyNaitaRecognized,
   }) {
     return InternshipModel(

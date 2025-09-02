@@ -9,13 +9,11 @@ class CompanyService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  // Get current company
   Future<CompanyModel?> getCurrentCompany() async {
     try {
       final User? user = _auth.currentUser;
       if (user == null) return null;
 
-      // Find the company document by ownerUid
       final query = await _firestore
           .collection('companies')
           .where('ownerUid', isEqualTo: user.uid)
@@ -29,13 +27,11 @@ class CompanyService {
     }
   }
 
-  // Update company profile
   Future<void> updateCompanyProfile({
     required String name,
     required String description,
     String? logoUrl,
     String linkedinUrl = '',
-    // Legacy fields kept for compatibility; stored as extras if provided
     String? companyEmail,
     String? companyPhone,
     String? companyLocation,
@@ -48,7 +44,6 @@ class CompanyService {
       final User? user = _auth.currentUser;
       if (user == null) throw Exception('User not authenticated');
 
-      // Ensure company exists
       final existing = await _firestore
           .collection('companies')
           .where('ownerUid', isEqualTo: user.uid)
@@ -61,7 +56,6 @@ class CompanyService {
         'description': description,
         'logoUrl': logoUrl,
         'linkedinUrl': linkedinUrl,
-        // extras
         if (companyEmail != null) 'companyEmail': companyEmail,
         if (companyPhone != null) 'companyPhone': companyPhone,
         if (companyLocation != null) 'companyLocation': companyLocation,
@@ -87,13 +81,11 @@ class CompanyService {
     }
   }
 
-  // Create initial company profile
   Future<void> createCompanyProfile({
     required String name,
     required String description,
     String? logoUrl,
     String linkedinUrl = '',
-    // Legacy extras retained
     String? companyEmail,
     String? companyPhone,
     String? companyLocation,
@@ -115,7 +107,6 @@ class CompanyService {
         'isApproved': false,
         'naitaRecognized': false,
         'createdAt': Timestamp.now(),
-        // extras
         'companyEmail': companyEmail,
         'companyPhone': companyPhone,
         'companyLocation': companyLocation,
@@ -130,12 +121,10 @@ class CompanyService {
     }
   }
 
-  // Sign out
   Future<void> signOut() async {
     await _auth.signOut();
   }
 
-  // Create internship posting
   Future<String?> createInternship(InternshipModel internship) async {
     try {
       final User? user = _auth.currentUser;
@@ -156,7 +145,6 @@ class CompanyService {
     }
   }
 
-  // Get all internships for current company
   Stream<List<InternshipModel>> getCompanyInternships() {
     final User? user = _auth.currentUser;
     if (user == null) return Stream.value([]);
@@ -165,8 +153,7 @@ class CompanyService {
         .collection('internships')
         .where('companyId', isEqualTo: user.uid)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => InternshipModel.fromFirestore(doc))
-            .toList());
+        .map((snapshot) =>
+            snapshot.docs.map(InternshipModel.fromFirestore).toList());
   }
 }
