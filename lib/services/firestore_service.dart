@@ -74,7 +74,6 @@ class FirestoreService {
     final doc = await _db.collection('companies').doc(ownerUid).get();
     if (doc.exists) return CompanyModel.fromFirestore(doc);
 
-    // legacy: random doc id; query by ownerUid
     final q = await _db
         .collection('companies')
         .where('ownerUid', isEqualTo: ownerUid)
@@ -144,13 +143,11 @@ class FirestoreService {
   }
 
   // ----------------------------- INTERNSHIPS -----------------------------
-
-  /// List fetch that **hydrates** missing company fields (Base64/URL/name/NAITA).
   static Future<List<InternshipModel>> getInternships({
     String? category,
     String? searchQuery,
     int limit = 20,
-    DocumentSnapshot? lastDocument, // not used in this sample
+    DocumentSnapshot? lastDocument,
   }) async {
     Query query = _db
         .collection('internships')
@@ -164,7 +161,7 @@ class FirestoreService {
     final snapshot = await query.get();
     var internships = snapshot.docs.map(InternshipModel.fromFirestore).toList();
 
-    // Hydrate any item missing company display fields
+    // hydrate missing company display fields
     final toHydrate = internships
         .where((i) =>
             (i.companyName == null || i.companyLogoBase64 == null) &&
@@ -247,7 +244,6 @@ class FirestoreService {
     return list;
   }
 
-  /// When creating an internship, copy company display info (including Base64).
   static Future<String> createInternship(InternshipModel internship) async {
     CompanyModel? company;
     if (internship.companyId.isNotEmpty) {
@@ -281,7 +277,6 @@ class FirestoreService {
     });
   }
 
-  /// Backfill helper for existing rows that miss company fields (run once).
   static Future<void> batchUpdateInternshipsWithCompanyInfo() async {
     final companiesSnapshot = await _db.collection('companies').get();
     final companies = {
@@ -337,7 +332,6 @@ class FirestoreService {
 
     var list = q.docs.map((d) => CompanyModel.fromFirestore(d)).toList();
 
-    // Legacy safety: include any docs where isApproved not true
     final snap = await _db.collection('companies').get();
     final extras = snap.docs
         .where((d) => d.data()['isApproved'] != true)
@@ -366,7 +360,7 @@ class FirestoreService {
         .set({'isApproved': approved}, SetOptions(merge: true));
   }
 
-// ----------------------------- APPLICATIONS -----------------------------
+  // ----------------------------- APPLICATIONS -----------------------------
   static Future<String> createApplication(ApplicationModel application) async {
     final docRef =
         await _db.collection('applications').add(application.toFirestore());

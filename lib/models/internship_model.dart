@@ -11,7 +11,11 @@ class InternshipModel {
   final String type;
   final String? stipend;
   final DateTime deadline;
-  final String? imageUrl;
+
+  /// Image fields
+  final String? imageUrl; // optional (legacy / storage)
+  final String? imageBase64; // NEW: Base64 stored in Firestore
+
   final DateTime createdAt;
   final bool isActive;
 
@@ -33,6 +37,7 @@ class InternshipModel {
     this.stipend,
     required this.deadline,
     this.imageUrl,
+    this.imageBase64, // NEW
     required this.createdAt,
     this.isActive = true,
     this.companyName,
@@ -55,6 +60,7 @@ class InternshipModel {
       stipend: data['stipend'],
       deadline: (data['deadline'] as Timestamp?)?.toDate() ?? DateTime.now(),
       imageUrl: data['imageUrl'],
+      imageBase64: data['imageBase64'], // NEW
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       isActive: data['isActive'] ?? true,
       companyName: data['companyName'],
@@ -76,6 +82,7 @@ class InternshipModel {
       'stipend': stipend,
       'deadline': Timestamp.fromDate(deadline),
       'imageUrl': imageUrl,
+      'imageBase64': imageBase64, // NEW
       'createdAt': Timestamp.fromDate(createdAt),
       'isActive': isActive,
       'companyName': companyName,
@@ -110,6 +117,7 @@ class InternshipModel {
     String? stipend,
     DateTime? deadline,
     String? imageUrl,
+    String? imageBase64, // NEW
     DateTime? createdAt,
     bool? isActive,
     String? companyName,
@@ -129,6 +137,7 @@ class InternshipModel {
       stipend: stipend ?? this.stipend,
       deadline: deadline ?? this.deadline,
       imageUrl: imageUrl ?? this.imageUrl,
+      imageBase64: imageBase64 ?? this.imageBase64, // NEW
       createdAt: createdAt ?? this.createdAt,
       isActive: isActive ?? this.isActive,
       companyName: companyName ?? this.companyName,

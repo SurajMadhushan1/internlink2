@@ -39,7 +39,6 @@ class InternshipProvider extends ChangeNotifier {
       _lastDocument = null;
       _hasMore = true;
     }
-
     if (!_hasMore || _isLoading) return;
 
     try {
@@ -54,8 +53,6 @@ class InternshipProvider extends ChangeNotifier {
 
       if (newInternships.isNotEmpty) {
         _internships.addAll(newInternships);
-        // Note: In a real implementation, you'd get the lastDocument from the query
-        // _lastDocument = snapshot.docs.last;
       } else {
         _hasMore = false;
       }
@@ -96,7 +93,6 @@ class InternshipProvider extends ChangeNotifier {
     try {
       _setLoading(true);
       _clearError();
-
       _selectedInternship = await FirestoreService.getInternship(internshipId);
     } catch (e) {
       _error = e.toString();
@@ -109,7 +105,6 @@ class InternshipProvider extends ChangeNotifier {
     try {
       _setLoading(true);
       _clearError();
-
       _companyInternships =
           await FirestoreService.getCompanyInternships(companyId);
     } catch (e) {
@@ -142,20 +137,12 @@ class InternshipProvider extends ChangeNotifier {
 
       await FirestoreService.updateInternship(internship);
 
-      // Update in company internships list
-      final index =
-          _companyInternships.indexWhere((i) => i.id == internship.id);
-      if (index != -1) {
-        _companyInternships[index] = internship;
-      }
+      final idx = _companyInternships.indexWhere((i) => i.id == internship.id);
+      if (idx != -1) _companyInternships[idx] = internship;
 
-      // Update in main internships list
-      final mainIndex = _internships.indexWhere((i) => i.id == internship.id);
-      if (mainIndex != -1) {
-        _internships[mainIndex] = internship;
-      }
+      final mainIdx = _internships.indexWhere((i) => i.id == internship.id);
+      if (mainIdx != -1) _internships[mainIdx] = internship;
 
-      // Update selected internship
       if (_selectedInternship?.id == internship.id) {
         _selectedInternship = internship;
       }
@@ -173,11 +160,9 @@ class InternshipProvider extends ChangeNotifier {
 
       await FirestoreService.deleteInternship(internshipId);
 
-      // Remove from lists
       _companyInternships.removeWhere((i) => i.id == internshipId);
       _internships.removeWhere((i) => i.id == internshipId);
 
-      // Clear selected if it was deleted
       if (_selectedInternship?.id == internshipId) {
         _selectedInternship = null;
       }
@@ -188,6 +173,7 @@ class InternshipProvider extends ChangeNotifier {
     }
   }
 
+  /// Kept for legacy URL flow (not used in Base64 posting screen).
   Future<void> uploadInternshipImage(String jobId, XFile imageFile) async {
     try {
       _setLoading(true);
@@ -196,11 +182,9 @@ class InternshipProvider extends ChangeNotifier {
       final imageUrl =
           await StorageService.uploadInternshipImage(jobId, imageFile);
 
-      // Update internship with image URL
       if (_selectedInternship != null) {
-        final updatedInternship =
-            _selectedInternship!.copyWith(imageUrl: imageUrl);
-        await updateInternship(updatedInternship);
+        final updated = _selectedInternship!.copyWith(imageUrl: imageUrl);
+        await updateInternship(updated);
       }
     } catch (e) {
       _error = e.toString();
@@ -236,10 +220,6 @@ class InternshipProvider extends ChangeNotifier {
   void _clearError() {
     _error = null;
     notifyListeners();
-  }
-
-  void clearError() {
-    _clearError();
   }
 
   void clear() {

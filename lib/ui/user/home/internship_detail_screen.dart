@@ -11,8 +11,6 @@ import '../../../providers/internship_provider.dart';
 import '../../../services/storage_service.dart';
 import '../../shared/widgets/loading_overlay.dart';
 
-/// Inline helper: show Base64 first, else URL, else fallback icon.
-/// No extra files required.
 class _CompanyLogoBox extends StatelessWidget {
   final String? base64Logo;
   final String? urlLogo;
@@ -32,10 +30,10 @@ class _CompanyLogoBox extends StatelessWidget {
 
     if (base64Logo != null && base64Logo!.isNotEmpty) {
       try {
-        final b64 = base64Logo!.contains(',')
+        final pure = base64Logo!.contains(',')
             ? base64Logo!.split(',').last
             : base64Logo!;
-        final bytes = Uint8List.fromList(base64Decode(b64));
+        final bytes = Uint8List.fromList(base64Decode(pure));
         provider = MemoryImage(bytes);
       } catch (_) {}
     }
@@ -64,11 +62,7 @@ class _CompanyLogoBox extends StatelessWidget {
 
 class InternshipDetailScreen extends StatefulWidget {
   final String internshipId;
-
-  const InternshipDetailScreen({
-    super.key,
-    required this.internshipId,
-  });
+  const InternshipDetailScreen({super.key, required this.internshipId});
 
   @override
   State<InternshipDetailScreen> createState() => _InternshipDetailScreenState();
@@ -100,7 +94,6 @@ class _InternshipDetailScreenState extends State<InternshipDetailScreen> {
         authProvider.user!.uid,
         widget.internshipId,
       );
-
       if (mounted) {
         setState(() {
           _hasApplied = hasApplied;
@@ -108,9 +101,7 @@ class _InternshipDetailScreenState extends State<InternshipDetailScreen> {
         });
       }
     } else {
-      if (mounted) {
-        setState(() => _isCheckingApplication = false);
-      }
+      if (mounted) setState(() => _isCheckingApplication = false);
     }
   }
 
@@ -121,11 +112,9 @@ class _InternshipDetailScreenState extends State<InternshipDetailScreen> {
 
     final user = authProvider.user;
     final internship = internshipProvider.selectedInternship;
-
     if (user == null || internship == null) return;
 
     try {
-      // Pick PDF resume
       final resumeFile = await StorageService.pickPdfFile();
       if (resumeFile == null) return;
 
@@ -162,6 +151,29 @@ class _InternshipDetailScreenState extends State<InternshipDetailScreen> {
     }
   }
 
+  Widget _buildHeaderImage(InternshipModel internship) {
+    // Prefer Base64, then URL, else placeholder
+    if (internship.imageBase64 != null && internship.imageBase64!.isNotEmpty) {
+      try {
+        final pure = internship.imageBase64!.contains(',')
+            ? internship.imageBase64!.split(',').last
+            : internship.imageBase64!;
+        final bytes = Uint8List.fromList(base64Decode(pure));
+        return Image.memory(bytes, fit: BoxFit.cover);
+      } catch (_) {}
+    }
+
+    if (internship.imageUrl != null && internship.imageUrl!.isNotEmpty) {
+      return Image.network(
+        internship.imageUrl!,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _HeaderFallbackIcon(),
+      );
+    }
+
+    return _HeaderFallbackIcon();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -175,31 +187,19 @@ class _InternshipDetailScreenState extends State<InternshipDetailScreen> {
 
           return CustomScrollView(
             slivers: [
-              // App bar with header image
               SliverAppBar(
                 expandedHeight: 200,
                 pinned: true,
                 flexibleSpace: FlexibleSpaceBar(
-                  background: internship.imageUrl != null &&
-                          internship.imageUrl!.isNotEmpty
-                      ? Image.network(
-                          internship.imageUrl!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) =>
-                              _HeaderFallbackIcon(),
-                        )
-                      : _HeaderFallbackIcon(),
+                  background: _buildHeaderImage(internship),
                 ),
               ),
-
-              // Content
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Title
                       Text(
                         internship.title,
                         style: Theme.of(context)
@@ -208,8 +208,6 @@ class _InternshipDetailScreenState extends State<InternshipDetailScreen> {
                             ?.copyWith(fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 8),
-
-                      // Company info (with Base64 logo)
                       Row(
                         children: [
                           _CompanyLogoBox(
@@ -251,10 +249,7 @@ class _InternshipDetailScreenState extends State<InternshipDetailScreen> {
                             ),
                         ],
                       ),
-
                       const SizedBox(height: 16),
-
-                      // Quick info
                       _InfoRow(
                         icon: Icons.location_on,
                         label: 'Location',
@@ -284,10 +279,7 @@ class _InternshipDetailScreenState extends State<InternshipDetailScreen> {
                             '${internship.deadline.day}/${internship.deadline.month}/${internship.deadline.year}',
                         isUrgent: internship.isExpired,
                       ),
-
                       const SizedBox(height: 24),
-
-                      // Description
                       Text(
                         'About this internship',
                         style: Theme.of(context)
@@ -303,10 +295,7 @@ class _InternshipDetailScreenState extends State<InternshipDetailScreen> {
                             .bodyMedium
                             ?.copyWith(height: 1.5),
                       ),
-
                       const SizedBox(height: 24),
-
-                      // Required skills
                       if (internship.skills.isNotEmpty) ...[
                         Text(
                           'Required Skills',
@@ -319,19 +308,17 @@ class _InternshipDetailScreenState extends State<InternshipDetailScreen> {
                         Wrap(
                           spacing: 8,
                           runSpacing: 8,
-                          children: internship.skills.map((skill) {
-                            return Chip(
-                              label: Text(skill),
-                              backgroundColor: Theme.of(context)
-                                  .colorScheme
-                                  .secondaryContainer,
-                            );
-                          }).toList(),
+                          children: internship.skills
+                              .map((s) => Chip(
+                                    label: Text(s),
+                                    backgroundColor: Theme.of(context)
+                                        .colorScheme
+                                        .secondaryContainer,
+                                  ))
+                              .toList(),
                         ),
                         const SizedBox(height: 24),
                       ],
-
-                      // Apply button
                       SizedBox(
                         width: double.infinity,
                         child: Consumer<ApplicationProvider>(
@@ -370,7 +357,6 @@ class _InternshipDetailScreenState extends State<InternshipDetailScreen> {
                           },
                         ),
                       ),
-
                       const SizedBox(height: 32),
                     ],
                   ),
@@ -428,13 +414,11 @@ class _InfoRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  label,
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: color),
-                ),
+                Text(label,
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: color)),
                 Text(
                   value,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(

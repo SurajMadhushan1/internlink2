@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -7,7 +11,6 @@ import '../../../core/utils/validators.dart';
 import '../../../models/internship_model.dart';
 import '../../../providers/company_provider.dart';
 import '../../../providers/internship_provider.dart';
-import '../../../services/storage_service.dart';
 import '../../shared/widgets/loading_overlay.dart';
 
 class PostInternshipScreen extends StatefulWidget {
@@ -29,7 +32,10 @@ class _PostInternshipScreenState extends State<PostInternshipScreen> {
   String _selectedCategory = AppConstants.categories[1]; // Skip 'All'
   final List<String> _skills = [];
   DateTime? _deadline;
-  XFile? _selectedImage;
+
+  XFile? _pickedImage;
+  Uint8List? _pickedBytes;
+  String? _pickedBase64; // what we store in Firestore
 
   @override
   void dispose() {
@@ -53,20 +59,41 @@ class _PostInternshipScreenState extends State<PostInternshipScreen> {
   }
 
   void _removeSkill(String skill) {
-    setState(() {
-      _skills.remove(skill);
-    });
+    setState(() => _skills.remove(skill));
   }
 
   Future<void> _pickImage() async {
     try {
-      final image = await StorageService.pickImage();
-      if (image != null) {
-        setState(() {
-          _selectedImage = image;
-        });
+      final picker = ImagePicker();
+      final img = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1280,
+        maxHeight: 720,
+        imageQuality: 80, // compress to keep base64 small
+      );
+      if (img == null) return;
+
+      final bytes = await File(img.path).readAsBytes();
+
+      // Enforce a soft limit (~1MB) for Firestore doc sizes
+      if (bytes.length > 1024 * 1024) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Image too large. Please pick < 1MB.'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+        return;
       }
+
+      setState(() {
+        _pickedImage = img;
+        _pickedBytes = bytes;
+        _pickedBase64 = base64Encode(bytes);
+      });
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to pick image: $e'),
@@ -77,18 +104,13 @@ class _PostInternshipScreenState extends State<PostInternshipScreen> {
   }
 
   Future<void> _selectDeadline() async {
-    final DateTime? picked = await showDatePicker(
+    final picked = await showDatePicker(
       context: context,
       initialDate: DateTime.now().add(const Duration(days: 30)),
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
-
-    if (picked != null) {
-      setState(() {
-        _deadline = picked;
-      });
-    }
+    if (picked != null) setState(() => _deadline = picked);
   }
 
   Future<void> _postInternship() async {
@@ -118,9 +140,8 @@ class _PostInternshipScreenState extends State<PostInternshipScreen> {
     }
 
     try {
-      // Create internship model with proper company information
       final internship = InternshipModel(
-        id: '', // Will be set by Firestore
+        id: '', // Firestore will generate
         companyId: company.id,
         title: _titleController.text.trim(),
         description: _descriptionController.text.trim(),
@@ -132,44 +153,34 @@ class _PostInternshipScreenState extends State<PostInternshipScreen> {
             ? null
             : _stipendController.text.trim(),
         deadline: _deadline!,
+        imageUrl: null, // not using Storage here
+        imageBase64: _pickedBase64, // NEW: store base64 in Firestore
         createdAt: DateTime.now(),
         isActive: true,
-        // IMPORTANT: Include company information in the internship document
         companyName: company.name,
         companyLogoUrl: company.logoUrl,
+        companyLogoBase64: company.logoBase64,
         companyNaitaRecognized: company.naitaRecognized,
       );
 
       await internshipProvider.createInternship(internship);
 
-      // Upload image if selected
-      if (_selectedImage != null &&
-          internshipProvider.companyInternships.isNotEmpty) {
-        final createdInternship = internshipProvider.companyInternships.first;
-        await internshipProvider.uploadInternshipImage(
-            createdInternship.id, _selectedImage!);
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Internship posted successfully!'),
-            backgroundColor: Theme.of(context).colorScheme.primary,
-          ),
-        );
-
-        // Clear form
-        _clearForm();
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Internship posted successfully!'),
+          backgroundColor: Theme.of(context).colorScheme.primary,
+        ),
+      );
+      _clearForm();
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to post internship: $e'),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to post internship: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
     }
   }
 
@@ -184,7 +195,9 @@ class _PostInternshipScreenState extends State<PostInternshipScreen> {
       _selectedCategory = AppConstants.categories[1];
       _skills.clear();
       _deadline = null;
-      _selectedImage = null;
+      _pickedImage = null;
+      _pickedBytes = null;
+      _pickedBase64 = null;
     });
   }
 
@@ -194,10 +207,7 @@ class _PostInternshipScreenState extends State<PostInternshipScreen> {
       appBar: AppBar(
         title: const Text('Post Internship'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.clear),
-            onPressed: _clearForm,
-          ),
+          IconButton(icon: const Icon(Icons.clear), onPressed: _clearForm),
         ],
       ),
       body: Consumer2<CompanyProvider, InternshipProvider>(
@@ -211,11 +221,8 @@ class _PostInternshipScreenState extends State<PostInternshipScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(
-                      Icons.pending,
-                      size: 64,
-                      color: Colors.orange.shade600,
-                    ),
+                    Icon(Icons.pending,
+                        size: 64, color: Colors.orange.shade600),
                     const SizedBox(height: 16),
                     Text(
                       'Approval Required',
@@ -228,13 +235,13 @@ class _PostInternshipScreenState extends State<PostInternshipScreen> {
                     const SizedBox(height: 8),
                     Text(
                       'Your company account is pending admin approval. You can post internships once approved.',
+                      textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color: Theme.of(context)
                                 .colorScheme
                                 .onSurface
                                 .withOpacity(0.7),
                           ),
-                      textAlign: TextAlign.center,
                     ),
                   ],
                 ),
@@ -258,34 +265,22 @@ class _PostInternshipScreenState extends State<PostInternshipScreen> {
                         labelText: 'Internship Title',
                         hintText: 'e.g., Frontend Developer Intern',
                       ),
-                      validator: (value) => Validators.required(value, 'Title'),
+                      validator: (v) => Validators.required(v, 'Title'),
                     ),
-
                     const SizedBox(height: 16),
 
-                    // Category dropdown
+                    // Category
                     DropdownButtonFormField<String>(
                       value: _selectedCategory,
-                      decoration: const InputDecoration(
-                        labelText: 'Category',
-                      ),
-                      items: AppConstants.categories.skip(1).map((category) {
-                        return DropdownMenuItem(
-                          value: category,
-                          child: Text(category),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        if (value != null) {
-                          setState(() {
-                            _selectedCategory = value;
-                          });
-                        }
-                      },
-                      validator: (value) =>
-                          Validators.required(value, 'Category'),
+                      decoration: const InputDecoration(labelText: 'Category'),
+                      items: AppConstants.categories
+                          .skip(1)
+                          .map(
+                              (c) => DropdownMenuItem(value: c, child: Text(c)))
+                          .toList(),
+                      onChanged: (v) => setState(() => _selectedCategory = v!),
+                      validator: (v) => Validators.required(v, 'Category'),
                     ),
-
                     const SizedBox(height: 16),
 
                     // Location
@@ -295,10 +290,8 @@ class _PostInternshipScreenState extends State<PostInternshipScreen> {
                         labelText: 'Location',
                         hintText: 'e.g., Colombo, Remote, Hybrid',
                       ),
-                      validator: (value) =>
-                          Validators.required(value, 'Location'),
+                      validator: (v) => Validators.required(v, 'Location'),
                     ),
-
                     const SizedBox(height: 16),
 
                     // Type
@@ -308,12 +301,11 @@ class _PostInternshipScreenState extends State<PostInternshipScreen> {
                         labelText: 'Internship Type',
                         hintText: 'e.g., Full-time, Part-time, Project-based',
                       ),
-                      validator: (value) => Validators.required(value, 'Type'),
+                      validator: (v) => Validators.required(v, 'Type'),
                     ),
-
                     const SizedBox(height: 16),
 
-                    // Stipend (optional)
+                    // Stipend
                     TextFormField(
                       controller: _stipendController,
                       decoration: const InputDecoration(
@@ -321,7 +313,6 @@ class _PostInternshipScreenState extends State<PostInternshipScreen> {
                         hintText: 'e.g., Rs. 25,000/month, Unpaid',
                       ),
                     ),
-
                     const SizedBox(height: 16),
 
                     // Deadline
@@ -329,8 +320,7 @@ class _PostInternshipScreenState extends State<PostInternshipScreen> {
                       onTap: _selectDeadline,
                       child: InputDecorator(
                         decoration: const InputDecoration(
-                          labelText: 'Application Deadline',
-                        ),
+                            labelText: 'Application Deadline'),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -345,53 +335,45 @@ class _PostInternshipScreenState extends State<PostInternshipScreen> {
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 24),
 
-                    // Skills section
+                    // Skills
                     Text(
                       'Required Skills',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.bold),
                     ),
-
                     const SizedBox(height: 8),
-
                     Row(
                       children: [
                         Expanded(
                           child: TextFormField(
                             controller: _skillController,
-                            decoration: const InputDecoration(
-                              hintText: 'Add a skill',
-                            ),
+                            decoration:
+                                const InputDecoration(hintText: 'Add a skill'),
                             onFieldSubmitted: (_) => _addSkill(),
                           ),
                         ),
                         const SizedBox(width: 8),
                         ElevatedButton(
-                          onPressed: _addSkill,
-                          child: const Text('Add'),
-                        ),
+                            onPressed: _addSkill, child: const Text('Add')),
                       ],
                     ),
-
                     const SizedBox(height: 8),
-
                     if (_skills.isNotEmpty)
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
-                        children: _skills.map((skill) {
-                          return Chip(
-                            label: Text(skill),
-                            deleteIcon: const Icon(Icons.close, size: 18),
-                            onDeleted: () => _removeSkill(skill),
-                          );
-                        }).toList(),
+                        children: _skills
+                            .map((s) => Chip(
+                                  label: Text(s),
+                                  deleteIcon: const Icon(Icons.close, size: 18),
+                                  onDeleted: () => _removeSkill(s),
+                                ))
+                            .toList(),
                       ),
-
                     const SizedBox(height: 24),
 
                     // Description
@@ -404,27 +386,24 @@ class _PostInternshipScreenState extends State<PostInternshipScreen> {
                         alignLabelWithHint: true,
                       ),
                       maxLines: 6,
-                      validator: (value) =>
-                          Validators.required(value, 'Description'),
+                      validator: (v) => Validators.required(v, 'Description'),
                     ),
-
                     const SizedBox(height: 24),
 
-                    // Image section
+                    // Image (Base64) picker
                     Text(
                       'Internship Image (Optional)',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.bold),
                     ),
-
                     const SizedBox(height: 8),
-
                     GestureDetector(
                       onTap: _pickImage,
                       child: Container(
                         width: double.infinity,
-                        height: 120,
+                        height: 140,
                         decoration: BoxDecoration(
                           color: Theme.of(context)
                               .colorScheme
@@ -437,28 +416,20 @@ class _PostInternshipScreenState extends State<PostInternshipScreen> {
                                 .withOpacity(0.3),
                           ),
                         ),
-                        child: _selectedImage != null
+                        child: _pickedBytes != null
                             ? ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
-                                child: Image.asset(
-                                  _selectedImage!.path,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) =>
-                                      const Center(
-                                    child: Icon(Icons.error),
-                                  ),
-                                ),
+                                child: Image.memory(_pickedBytes!,
+                                    fit: BoxFit.cover),
                               )
                             : Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(
-                                    Icons.add_photo_alternate,
-                                    size: 32,
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                  ),
+                                  Icon(Icons.add_photo_alternate,
+                                      size: 32,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant),
                                   const SizedBox(height: 8),
                                   Text(
                                     'Tap to add image',
@@ -475,7 +446,6 @@ class _PostInternshipScreenState extends State<PostInternshipScreen> {
                               ),
                       ),
                     ),
-
                     const SizedBox(height: 32),
 
                     // Post button
@@ -489,7 +459,6 @@ class _PostInternshipScreenState extends State<PostInternshipScreen> {
                         child: const Text('Post Internship'),
                       ),
                     ),
-
                     const SizedBox(height: 32),
                   ],
                 ),
